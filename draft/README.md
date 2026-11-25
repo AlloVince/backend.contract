@@ -6,6 +6,7 @@
 
 - [Core：第一批机器可审计核心规则](core.md)：包含 15 组行业候选、11 组 Golf 后端真实经验补充，以及 Agent Review / 不值得自动化的判断；逐组标记检测方式、现有证据与落地顺序。
 - [后端架构与边界](architecture.md)
+- [架构与设计 Review：领域模型、命名、API、数据约束与操作面](design-review.md)：历史评估记录；已正式采用，现行规则见 [DESIGN-REVIEW.md](../contract/DESIGN-REVIEW.md)。
 - [MySQL / 关系数据库](mysql.md)
 - [REST API](rest-api.md)
 - [HTTP 语义](http-semantics.md)

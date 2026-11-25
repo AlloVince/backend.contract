@@ -3,6 +3,7 @@
 ## 当前实施状态（2026-11-25）
 
 - [x] 建立 Owner、正式规范和 Gate / Agent / Review 映射。
+- [x] 正式引入八项 Design Review：设计前自检及按需复查入口，不依赖消费者安装；消除既有专题规范与用户确认原则的冲突。
 - [x] 提供无外部依赖的 CLI、通用模板和 manifest JSON Schema。
 - [x] 实现 create / adopt / check / review / update，并为文件保护、显式命令执行和路径边界编写回归测试。
 - [x] Golf Importer 增量接入：保留原 AGENTS/Owner，记录项目基线，复用现有 CI 命令；Ruff、35 项架构测试、334 项测试与 Worker dry-run 已实跑通过，check --run --strict 全绿。

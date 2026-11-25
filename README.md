@@ -2,7 +2,11 @@
 
 跨语言、跨数据库、跨部署平台的后端工程契约。它把已经验证的工程经验落实为三种互补保障：机器 Gate、开发过程中的 Agent 约束，以及基于真实证据的 Review。
 
-它不是后端框架，不强制统一技术栈，也不要求所有规则都变成 CI 门禁。
+它不是后端框架，不强制统一技术栈，也不要求所有规则都变成 CI 门禁。用户明确确认的设计原则优先于早期通用候选实践；正式 Design Review 是设计复查入口。
+
+## 设计复查（无需接入项目）
+
+在对话中直接要求 Agent：“用 Backend Contract 复查这个设计。” Agent 应读取 [contract/DESIGN-REVIEW.md](contract/DESIGN-REVIEW.md) 与相关专题，结合当前设计和项目 Owner，指出具体问题、修正方案与例外。新建或实质性修改设计前执行适用条目；完整复查覆盖八项。无需先安装、执行 CLI 或获得额外审批。
 
 ## 快速使用
 
@@ -40,7 +44,7 @@ node bin/contract.mjs update ~/Developer/existing.backend
 |---|---|---|
 | Gate | 机器可确定性判断 | 静态分析、OpenAPI、Secret Scanner、权限测试、唯一约束、迁移、分页、幂等和 CI |
 | Agent | 开发过程中持续遵循 | 模块边界、数据 Owner、领域 API、复杂度取舍、事务与恢复设计 |
-| Review | 依赖真实证据判断 | 业务语义、N+1、资源成本、真实用户路径、发布和恢复 |
+| Review | 设计前审查方案，完成后依赖真实证据 | 八项设计标准、业务语义、N+1、资源成本、真实用户路径、发布和恢复 |
 
 一条原则可以同时由三种方式保障。缺少确定性判断条件时，不把它强行变成门禁。
 
@@ -80,4 +84,4 @@ draft/ 与 references/ 不自动生效；real-cases/ 提供可追溯的经验来
 
 ## 当前状态
 
-**v0.1.0 — 首个可接入版本。** 已提供正式规范、Agent 入口、通用模板和 create/adopt/check/review/update 命令。Golf Importer 已完成一次真实增量接入与现有 CI 检查实跑；Butler 因当前工作区有未提交的 Dashboard / Task 状态改动，暂不叠加接入。尚未宣称所有 29 组核心规则都已自动化。
+**v0.2.0 — 正式设计评审版。** 已提供正式规范、Agent 入口、通用模板和 create/adopt/check/review/update 命令。Golf Importer 已完成一次真实增量接入与现有 CI 检查实跑；Butler 因当前工作区有未提交的 Dashboard / Task 状态改动，暂不叠加接入。尚未宣称所有 29 组核心规则都已自动化。

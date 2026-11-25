@@ -42,6 +42,11 @@ test('create makes a language-neutral strict skeleton and installs all contract 
   assert.ok(fs.existsSync(path.join(target, 'tests/README.md')));
   assert.ok(fs.existsSync(path.join(target, 'owner/PROJECT.md')));
   assert.ok(fs.existsSync(path.join(target, 'docs/backend-contract/GATES.md')));
+  const design = fs.readFileSync(path.join(target, 'docs/backend-contract/DESIGN-REVIEW.md'), 'utf8');
+  assert.equal([...design.matchAll(/^## DESIGN-0[1-8] /gm)].length, 8);
+  assert.match(fs.readFileSync(path.join(target, 'docs/backend-contract/AGENT.md'), 'utf8'), /DESIGN-REVIEW\.md/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'backend-contract.json'))).files['DESIGN-REVIEW.md'].version,
+    JSON.parse(fs.readFileSync(path.join(root, 'package.json'))).version);
   assert.ok(fs.existsSync(path.join(target, 'docs/backend-contract/ACCEPTANCE.md')));
   assert.ok(fs.existsSync(path.join(target, 'docs/backend-contract/manifest.schema.json')));
   assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'backend-contract.json'))).$schema,
@@ -132,6 +137,26 @@ test('update restores missing files but never overwrites locally modified contra
   const check = run('check', target);
   assert.equal(check.status, 0, check.stderr);
   assert.match(check.stdout, /CUSTOMIZED.*AGENT.md/);
+});
+
+test('update installs the design review for legacy consumers while preserving project instructions', t => {
+  const target = adopt(t);
+  const docs = path.join(target, 'docs/backend-contract');
+  const manifestFile = path.join(target, 'backend-contract.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+  const projectAgent = fs.readFileSync(path.join(target, 'AGENTS.md'), 'utf8');
+  fs.rmSync(path.join(docs, 'DESIGN-REVIEW.md'));
+  delete manifest.files['DESIGN-REVIEW.md'];
+  manifest.contractVersion = '0.1.0';
+  fs.writeFileSync(manifestFile, JSON.stringify(manifest));
+  const result = run('update', target);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /补齐缺失：.*DESIGN-REVIEW.md/);
+  assert.equal(fs.readFileSync(path.join(docs, 'DESIGN-REVIEW.md'), 'utf8'),
+    fs.readFileSync(path.join(root, 'contract/DESIGN-REVIEW.md'), 'utf8'));
+  assert.equal(fs.readFileSync(path.join(target, 'AGENTS.md'), 'utf8'), projectAgent);
+  assert.equal(JSON.parse(fs.readFileSync(manifestFile)).contractVersion,
+    JSON.parse(fs.readFileSync(path.join(root, 'package.json'))).version);
 });
 
 test('review collects project evidence without running project commands', t => {
