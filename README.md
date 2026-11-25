@@ -1,87 +1,34 @@
-# Backend Contract
+# Backend Contract v0.3.0
 
-跨语言、跨数据库、跨部署平台的后端工程契约。它把已经验证的工程经验落实为三种互补保障：机器 Gate、开发过程中的 Agent 约束，以及基于真实证据的 Review。
+适用于所有项目的后端设计与工程原则，不是框架或合规体系。
 
-它不是后端框架，不强制统一技术栈，也不要求所有规则都变成 CI 门禁。用户明确确认的设计原则优先于早期通用候选实践；正式 Design Review 是设计复查入口。
+**最高优先级：禁止自锁。** 不以自设状态、版本、Hash、冻结、审批或基线阻止合法工作。冲突的规则与实现直接删除或修正；保留真实安全和数据完整性约束。
 
-## 设计复查（无需接入项目）
+## 使用
 
-在对话中直接要求 Agent：“用 Backend Contract 复查这个设计。” Agent 应读取 [contract/DESIGN-REVIEW.md](contract/DESIGN-REVIEW.md) 与相关专题，结合当前设计和项目 Owner，指出具体问题、修正方案与例外。新建或实质性修改设计前执行适用条目；完整复查覆盖八项。无需先安装、执行 CLI 或获得额外审批。
+直接对 Agent 说“用 Backend Contract 复查这个设计”，阅读 [DESIGN-REVIEW.md](contract/DESIGN-REVIEW.md) 和相关专题。不要求项目安装、配置或执行 CLI。
 
-## 快速使用
+[正式规范入口](contract/README.md) 包含设计原则、Agent、Gate 与 Review。各项目只使用与真实业务相关的规则。
 
-要求 Node.js 22.16 或更高版本（低于 27）。
+## 可选 CLI
+
+Node.js 22.16 或更高版本（低于 27）。
 
 ~~~bash
-# 创建语言无关的新项目骨架（目标目录必须为空）
 node bin/contract.mjs create ~/Developer/new.backend
-
-# 给现有项目增量接入，不覆盖业务代码
 node bin/contract.mjs adopt ~/Developer/existing.backend
-
-# 检查契约接入状态；默认不执行项目命令
 node bin/contract.mjs check ~/Developer/existing.backend
-
-# 执行项目在 backend-contract.json 中明确配置的检查
 node bin/contract.mjs check ~/Developer/existing.backend --run
-
-# 严格检查：缺少或未运行必需检查时返回失败
-node bin/contract.mjs check ~/Developer/new.backend --run --strict
-
-# 采集项目结构、测试、API Schema、迁移、CI 和部署证据（输出到终端）
 node bin/contract.mjs review ~/Developer/existing.backend
-
-# 需要保存时，显式指定项目内的报告路径
-node bin/contract.mjs review ~/Developer/existing.backend --out=review/backend-review.md
-
-# 更新未被项目本地修改的 Contract 副本
 node bin/contract.mjs update ~/Developer/existing.backend
 ~~~
 
-## 三种保障方式
+create 创建语言无关的起点；adopt 安装规范并保留项目文件；update 更新未修改的规范副本，保留本地内容。check --run 只执行 manifest 中显式配置的检查命令，不猜测命令；没有配置或检查未运行时如实提示，不阻塞。真实检查失败及无效命令配置仍返回失败。review 无需安装，默认只读输出线索，可用 --out=相对路径保存。
 
-| 方式 | 做什么 | 典型内容 |
-|---|---|---|
-| Gate | 机器可确定性判断 | 静态分析、OpenAPI、Secret Scanner、权限测试、唯一约束、迁移、分页、幂等和 CI |
-| Agent | 开发过程中持续遵循 | 模块边界、数据 Owner、领域 API、复杂度取舍、事务与恢复设计 |
-| Review | 设计前审查方案，完成后依赖真实证据 | 八项设计标准、业务语义、N+1、资源成本、真实用户路径、发布和恢复 |
+旧 Strict / Incremental 模式、Baseline 及独立验收清单已取消。版本和 Hash 仅用于记录与避免意外覆盖，不参与运行授权。历史消费者升级时保留含项目内容的旧文件。
 
-一条原则可以同时由三种方式保障。缺少确定性判断条件时，不把它强行变成门禁。
+## 维护
 
-## 重要行为边界
+owner/PROJECT.md 保存目标；contract/ 是唯一正式规则；real-cases/ 保留真实反例。旧候选实践和草案从 Git 历史追溯，不再维持第二套规范。新增规则必须能减少真实错误或成本，否则不增加。
 
-- create 只生成通用目录和契约，不生成伪装成可运行的特定技术栈后端。
-- adopt 使用 incremental 模式，保留现有业务代码、README 和 AGENTS 内容。
-- check 默认只检查接入结构，不执行任意项目命令。
-- 只有 backend-contract.json 的 checks 数组中明确配置的命令，才会被 check --run 执行；命令以参数数组运行，不经过 shell。
-- strict 模式要求必需检查已配置并实际运行。未运行不等于通过。
-- review 默认只向终端输出事实，不写入项目文件；只有显式指定 --out=... 才保存报告，且输出路径必须在项目内部。它不自动判定架构合规，不运行测试或部署。
-- update 只覆盖与上次安装内容一致的文件；消费者本地修改会保留并报告。
-- Contract 版本用于追溯，不是运行锁、审批或冻结机制。
-
-## 目录
-
-- owner/PROJECT.md：项目最高意图。
-- plan/PRODUCTIZATION.md：产品结构和实施计划。
-- contract/：正式规范。
-- bin/contract.mjs：CLI。
-- templates/generic-service/：语言无关的工程起点。
-- contract/manifest.schema.json：消费者 manifest 的 JSON Schema，并随契约一起安装。
-- tests/：CLI 行为回归测试。
-- draft/：候选规则与适用性评估。
-- references/：外部工程实践。
-- real-cases/：真实反例与经验来源。
-
-## 研究资产如何进入正式 Contract
-
-1. 先核实真实案例与当前实现。
-2. 对照 references，评估候选实践的收益、适用范围和副作用。
-3. 在 draft 中明确采用、修改后采用、按需采用或不采用及理由。
-4. 只有稳定且适用于跨项目的结论才进入 contract/。
-5. 通过真实实现、自动检查和端到端行为验收；不把文档存在当成落地完成。
-
-draft/ 与 references/ 不自动生效；real-cases/ 提供可追溯的经验来源。不要因为某条行业最佳实践存在，就默认每个项目都必须采用。
-
-## 当前状态
-
-**v0.2.0 — 正式设计评审版。** 已提供正式规范、Agent 入口、通用模板和 create/adopt/check/review/update 命令。Golf Importer 已完成一次真实增量接入与现有 CI 检查实跑；Butler 因当前工作区有未提交的 Dashboard / Task 状态改动，暂不叠加接入。尚未宣称所有 29 组核心规则都已自动化。
+本仓测试：npm test。

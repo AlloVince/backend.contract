@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -30,41 +31,43 @@ function adopt(t) {
   return target;
 }
 
-test('create makes a language-neutral strict skeleton and installs all contract documents', t => {
+test('create makes a language-neutral skeleton and installs all contract documents', t => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'backend-contract-create-'));
   t.after(() => fs.rmSync(base, {recursive: true, force: true}));
   const target = path.join(base, 'new-service');
   const result = run('create', target);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'backend-contract.json'))).mode, 'strict');
-  assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'backend-contract.json'))).profile, 'generic-service');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'backend-contract.json'))).mode, undefined);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'backend-contract.json'))).profile, undefined);
   assert.ok(fs.existsSync(path.join(target, 'src/README.md')));
   assert.ok(fs.existsSync(path.join(target, 'tests/README.md')));
   assert.ok(fs.existsSync(path.join(target, 'owner/PROJECT.md')));
   assert.ok(fs.existsSync(path.join(target, 'docs/backend-contract/GATES.md')));
   const design = fs.readFileSync(path.join(target, 'docs/backend-contract/DESIGN-REVIEW.md'), 'utf8');
   assert.equal([...design.matchAll(/^## DESIGN-0[1-8] /gm)].length, 8);
+  assert.match(design, /DESIGN-00 禁止自锁（最高优先级）/);
   assert.match(fs.readFileSync(path.join(target, 'docs/backend-contract/AGENT.md'), 'utf8'), /DESIGN-REVIEW\.md/);
   assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'backend-contract.json'))).files['DESIGN-REVIEW.md'].version,
     JSON.parse(fs.readFileSync(path.join(root, 'package.json'))).version);
-  assert.ok(fs.existsSync(path.join(target, 'docs/backend-contract/ACCEPTANCE.md')));
+  assert.equal(fs.existsSync(path.join(target, 'docs/backend-contract/ACCEPTANCE.md')), false);
+  assert.equal(fs.existsSync(path.join(target, 'docs/backend-contract/BASELINE.md')), false);
   assert.ok(fs.existsSync(path.join(target, 'docs/backend-contract/manifest.schema.json')));
   assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'backend-contract.json'))).$schema,
     './docs/backend-contract/manifest.schema.json');
   assert.match(fs.readFileSync(path.join(target, 'AGENTS.md'), 'utf8'), /docs\/backend-contract\/AGENT.md/);
   assert.equal(fs.existsSync(path.join(target, 'package.json')), false, 'generic template must not choose a runtime');
   const check = run('check', target);
-  assert.equal(check.status, 1, 'strict new projects must configure and run their checks');
+  assert.equal(check.status, 0, 'unconfigured checks do not block a new project');
   assert.match(check.stdout + check.stderr, /UNVERIFIED/);
 });
 
-test('adopt preserves existing project files and defaults to incremental mode', t => {
+test('adopt preserves existing project files without governance mode', t => {
   const target = adopt(t);
   assert.equal(fs.readFileSync(path.join(target, 'README.md'), 'utf8'), '# Existing project\n');
   const agent = fs.readFileSync(path.join(target, 'AGENTS.md'), 'utf8');
   assert.match(agent, /Keep this content/);
   assert.match(agent, /docs\/backend-contract\/AGENT.md/);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'backend-contract.json'))).mode, 'incremental');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'backend-contract.json'))).mode, undefined);
   const check = run('check', target);
   assert.equal(check.status, 0, check.stderr);
   assert.match(check.stdout, /未配置项目质量检查/);
@@ -94,33 +97,69 @@ test('check --run executes only explicitly configured commands and reports failu
   assert.match(failed.stderr, /FAIL  safe passing fixture/);
 });
 
-test('strict check fails until required checks are configured and run', t => {
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'backend-contract-strict-'));
-  t.after(() => fs.rmSync(base, {recursive: true, force: true}));
-  const target = path.join(base, 'new-service');
-  assert.equal(run('create', target).status, 0);
+test('old strict mode, missing documents and changed versions never block configured checks', t => {
+  const target = adopt(t);
   const manifestFile = path.join(target, 'backend-contract.json');
   const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+  manifest.mode = 'strict';
+  manifest.contractVersion = '0.1.0';
+  manifest.schemaVersion = 999;
+  delete manifest.files;
+  fs.rmSync(path.join(target, 'docs/backend-contract/API.md'));
+  fs.rmSync(path.join(target, 'AGENTS.md'));
   manifest.checks = [{
     id: 'smoke',
     name: 'configured smoke check',
     command: [process.execPath, '-e', 'process.exit(0)'],
-    required: true,
   }];
-  fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
-  assert.equal(run('check', target).status, 1, 'configured but unrun check is not a pass');
-  const result = run('check', target, '--run');
+  fs.writeFileSync(manifestFile, JSON.stringify(manifest));
+  const preview = run('check', target, '--strict');
+  assert.equal(preview.status, 0, preview.stderr);
+  assert.match(preview.stdout, /NOT RUN/);
+  assert.match(preview.stdout, /UNVERIFIED/);
+  const result = run('check', target, '--run', '--strict');
   assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /PASS  configured smoke check/);
+  manifest.checks[0].command = [process.execPath, '-e', 'process.exit(7)'];
+  fs.writeFileSync(manifestFile, JSON.stringify(manifest));
+  assert.equal(run('check', target, '--run').status, 1, 'real failures still fail');
+});
 
-  manifest.checks = [{
-    id: 'optional-only',
-    command: [process.execPath, '-e', 'process.exit(0)'],
-    required: false,
-  }];
-  fs.writeFileSync(manifestFile, JSON.stringify(manifest, null, 2));
-  const optionalOnly = run('check', target, '--run', '--strict');
-  assert.equal(optionalOnly.status, 1);
-  assert.match(optionalOnly.stderr, /至少需要配置一项必需检查/);
+test('review and check do not require installation', t => {
+  const target = project(t);
+  const check = run('check', target);
+  assert.equal(check.status, 0, check.stderr);
+  assert.match(check.stdout, /UNVERIFIED/);
+  assert.equal(run('review', target).status, 0);
+  assert.equal(fs.readdirSync(target).length, 0);
+});
+
+test('update retires unchanged legacy documents and preserves project facts', t => {
+  const target = adopt(t);
+  const docs = path.join(target, 'docs/backend-contract');
+  const manifestFile = path.join(target, 'backend-contract.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+  manifest.mode = 'strict';
+  manifest.profile = 'legacy';
+  const old = 'old stock text';
+  const hash = crypto.createHash('sha256').update(old).digest('hex');
+  for (const name of ['ACCEPTANCE.md', 'OBSERVABILITY.md']) {
+    manifest.files[name] = {version: '0.2.0', sha256: hash};
+    fs.writeFileSync(path.join(docs, name), old);
+  }
+  fs.appendFileSync(path.join(docs, 'OBSERVABILITY.md'), '\nlocal evidence');
+  fs.writeFileSync(path.join(docs, 'BASELINE.md'), 'project facts');
+  fs.writeFileSync(manifestFile, JSON.stringify(manifest));
+  const result = run('update', target);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.existsSync(path.join(docs, 'ACCEPTANCE.md')), false);
+  assert.match(fs.readFileSync(path.join(docs, 'OBSERVABILITY.md'), 'utf8'), /local evidence/);
+  assert.equal(fs.readFileSync(path.join(docs, 'BASELINE.md'), 'utf8'), 'project facts');
+  const next = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+  assert.equal(next.mode, undefined);
+  assert.equal(next.profile, undefined);
+  assert.equal(next.files['ACCEPTANCE.md'], undefined);
+  assert.equal(run('check', target, '--strict').status, 0);
 });
 
 test('update restores missing files but never overwrites locally modified contract documents', t => {

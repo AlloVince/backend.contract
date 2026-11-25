@@ -1,36 +1,10 @@
-# Backend Contract v0.2.0
+# Backend Contract v0.3.0
 
-这是消费者项目使用的正式规范入口。研究候选、来源和历史案例分别保留在仓库根目录的 draft/、references/、real-cases/；它们不是额外的强制规则集合。
+适用于所有后端形态，包括本地 CLI、数据构建、服务和线上应用。统一设计判断，不统一技术栈或工程规模。
 
-## 从哪里开始
+- [DESIGN-REVIEW.md](DESIGN-REVIEW.md)：最高优先级禁止自锁及用户确认的八项设计原则，设计前复查入口。
+- [AGENT.md](AGENT.md)：开发入口。
+- 按实际涉及的能力读取：[架构](ARCHITECTURE.md)、[API](API.md)、[数据](DATA.md)、[安全](SECURITY.md)、[可靠性与运行](RELIABILITY.md)。
+- [GATES.md](GATES.md)：复用真实确定性检查；[REVIEW.md](REVIEW.md)：验证实际结果。
 
-- Agent 开发入口：[AGENT.md](./AGENT.md)
-- **设计前评审入口：[DESIGN-REVIEW.md](./DESIGN-REVIEW.md)**（领域提炼、命名、REST、数据库、页面请求、CLI、配置）
-- 架构与模块边界：[ARCHITECTURE.md](./ARCHITECTURE.md)
-- 数据、身份与持久化：[DATA.md](./DATA.md)
-- API 与 HTTP：[API.md](./API.md)
-- 安全：[SECURITY.md](./SECURITY.md)
-- 可靠性、发布与恢复：[RELIABILITY.md](./RELIABILITY.md)
-- 可观测性：[OBSERVABILITY.md](./OBSERVABILITY.md)
-- 三种保障方式与规则映射：[GATES.md](./GATES.md)
-- Review 证据采集：[REVIEW.md](./REVIEW.md)
-- 交付验收：[ACCEPTANCE.md](./ACCEPTANCE.md)
-- 消费者 manifest：[manifest.schema.json](./manifest.schema.json)
-
-## 适用方式
-
-Contract 是跨项目默认原则，不是框架，也不替代消费者项目的 Owner。项目必须根据真实语言、数据库、平台、消费者和业务不变量选择实现方式。不适用时说明理由，不得机械套用技术栈专属规则。
-
-## 三种保障方式
-
-| 方式 | 主要阶段 | 责任 |
-|---|---|---|
-| Gate | 提交、CI、迁移、发布 | 机器检查确定性不变量 |
-| Agent | 设计、编码、修改 | 开发过程中遵循规范并做取舍 |
-| Review | 设计前、完成后、发布后、周期巡检 | 设计阶段复查方案；实现后基于真实证据审查语义和整体结果 |
-
-同一原则可以同时由 Gate、Agent 和 Review 保障。不是每条原则都适合 Gate；不能确定性判断的内容不得伪装成硬门禁。
-
-## 版本
-
-当前版本：**0.2.0**。正式加入 Design Review，并统一现有架构、API、数据库、CLI、配置与评审规范。它不代表所有候选实践已经自动化，也不代表任何消费者项目已经通过验收。
+Gate、Agent、Review 相互补充。设计无需安装 Contract；不适用的专题无需读取或实现。不建立第二套项目治理、审批或合规清单。用户明确原则优先，项目具体业务约束由其 Owner 决定。

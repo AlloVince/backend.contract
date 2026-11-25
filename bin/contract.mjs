@@ -30,12 +30,12 @@ function usage() {
 Usage:
   node bin/contract.mjs create <empty-project-path>
   node bin/contract.mjs adopt <existing-project-path>
-  node bin/contract.mjs check <project-path> [--run] [--strict]
+  node bin/contract.mjs check <project-path> [--run]
   node bin/contract.mjs review <project-path>
   node bin/contract.mjs update <project-path>
 
 Commands:
-  create  Create a language-neutral project skeleton and install the Contract (strict mode).
+  create  Create a language-neutral project skeleton and install the Contract.
   adopt   Install the Contract into an existing project without replacing business files.
   check   Check the installation; project commands run only with --run and explicit manifest entries.
   review  Print read-only project evidence for an Agent; optionally save with --out=<relative-path>.
@@ -93,13 +93,8 @@ function loadManifest(target) {
   } catch (error) {
     throw new Error('backend-contract.json 不是有效 JSON：' + error.message);
   }
-  if (manifest.schemaVersion !== 1 ||
-      typeof manifest.contractVersion !== 'string' ||
-      typeof manifest.mode !== 'string' ||
-      !['strict', 'incremental'].includes(manifest.mode) ||
-      !manifest.files || typeof manifest.files !== 'object' || Array.isArray(manifest.files) ||
-      !Array.isArray(manifest.checks)) {
-    throw new Error('backend-contract.json 格式不受支持；请先备份并修复 manifest。');
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    throw new Error('backend-contract.json 必须是 JSON 对象。');
   }
   return manifest;
 }
@@ -115,7 +110,7 @@ function ensureTarget(target, mustBeEmpty) {
   }
 }
 
-function install(target, {mode, profile}) {
+function install(target) {
   const manifest = manifestPath(target);
   const docs = path.join(target, docsRelative);
   if (fs.existsSync(manifest)) throw new Error('项目已经接入；升级请使用 update。');
@@ -139,8 +134,6 @@ function install(target, {mode, profile}) {
     $schema: './docs/backend-contract/manifest.schema.json',
     schemaVersion: 1,
     contractVersion: version,
-    profile,
-    mode,
     installedAt: new Date().toISOString(),
     files: records,
     checks: [],
@@ -151,21 +144,6 @@ function install(target, {mode, profile}) {
     for (const name of contractFiles) {
       writeNew(path.join(docs, name), fs.readFileSync(path.join(contractRoot, name)));
     }
-    writeNew(path.join(docs, 'BASELINE.md'), [
-      '# Backend Contract Baseline',
-      '',
-      '接入模式：' + mode,
-      '',
-      '记录已有实现、历史例外、尚未覆盖的检查和暂不适用的规范。',
-      '不要把未运行或缺少证据的检查标记为通过。',
-      '',
-      '## 已有能力与检查',
-      '',
-      '## 历史例外与已知缺口',
-      '',
-      '## 不适用项及理由',
-      '',
-    ].join('\n'));
     writeNew(manifest, JSON.stringify(data, null, 2) + '\n');
     atomicWrite(agentFile, nextAgent);
   } catch (error) {
@@ -174,37 +152,39 @@ function install(target, {mode, profile}) {
     try { fs.rmSync(manifest, {force: true}); } catch {}
     throw error;
   }
-  console.log((mode === 'strict' ? '已创建' : '已接入') + ' Backend Contract：' + target);
-  console.log('契约版本：' + version + '；项目模式：' + mode);
+  console.log('已安装 Backend Contract：' + target);
+  console.log('契约版本：' + version);
   console.log('项目业务代码和既有 AGENTS 内容已保留。');
-  console.log('下一步：配置 backend-contract.json 中的 checks，再运行 check --run。');
+  console.log('需要集中运行已有检查时，可选配置 checks。');
 }
 
-function check(target, {run, strict}) {
+function check(target, {run}) {
+  if (!fs.existsSync(manifestPath(target))) {
+    console.log('UNVERIFIED  未安装 Contract 或配置项目检查；可直接使用项目已有检查。');
+    return;
+  }
   const manifest = loadManifest(target);
+  const records = manifest.files && typeof manifest.files === 'object' ? manifest.files : {};
   const docs = path.join(target, docsRelative);
   const problems = [];
   let unverified = 0;
+  let executed = 0;
 
   if (!fs.existsSync(path.join(target, 'AGENTS.md')) ||
       !fs.readFileSync(path.join(target, 'AGENTS.md'), 'utf8').includes(markerStart)) {
-    problems.push('FAIL  AGENTS.md 缺少 Backend Contract 入口');
+    console.log('UNVERIFIED  AGENTS.md 缺少 Backend Contract 入口');
+    unverified++;
   } else {
-    console.log('PASS  Agent 入口存在');
+    console.log('INFO  Agent 入口存在');
   }
-  if (!fs.existsSync(path.join(docs, 'BASELINE.md'))) {
-    problems.push('FAIL  缺少 docs/backend-contract/BASELINE.md');
-  } else {
-    console.log('PASS  Baseline 存在');
-  }
-
   for (const name of contractFiles) {
     const file = path.join(docs, name);
     if (!fs.existsSync(file)) {
-      problems.push('FAIL  缺少契约文件：' + name);
+      console.log('UNVERIFIED  缺少契约文件：' + name);
+      unverified++;
       continue;
     }
-    const record = manifest.files[name];
+    const record = records[name];
     if (!record) {
       console.log('UNVERIFIED  未登记来源版本：' + name);
       unverified++;
@@ -216,7 +196,7 @@ function check(target, {run, strict}) {
     } else if (record.version !== version) {
       console.log('UPDATE AVAILABLE  ' + name + ' 可更新到 ' + version);
     } else {
-      console.log('PASS  契约文件：' + name);
+      console.log('INFO  契约文件：' + name);
     }
   }
 
@@ -224,7 +204,8 @@ function check(target, {run, strict}) {
     console.log('UPDATE AVAILABLE  项目版本 ' + manifest.contractVersion + '；当前版本 ' + version);
   }
 
-  const checks = manifest.checks;
+  const checks = manifest.checks ?? [];
+  if (!Array.isArray(checks)) throw new Error('checks 必须是数组。');
   if (checks.length === 0) {
     console.log('UNVERIFIED  未配置项目质量检查；CLI 不会猜测或自动执行项目命令。');
     unverified++;
@@ -243,7 +224,7 @@ function check(target, {run, strict}) {
       ids.add(item.id);
       if (item.enabled === false) {
         console.log('NOT RUN  已禁用：' + label);
-        if (item.required !== false) unverified++;
+        unverified++;
         continue;
       }
       if (!Array.isArray(item.command) || item.command.length === 0 ||
@@ -267,9 +248,10 @@ function check(target, {run, strict}) {
       }
       if (!run) {
         console.log('NOT RUN  ' + label + ' — 使用 check --run 执行');
-        if (item.required !== false) unverified++;
+        unverified++;
         continue;
       }
+      executed++;
       console.log('\n=== 运行检查：' + label + ' ===');
       const timeoutMs = Number.isInteger(item.timeoutMs) && item.timeoutMs > 0
         ? Math.min(item.timeoutMs, 900000) : 300000;
@@ -288,23 +270,13 @@ function check(target, {run, strict}) {
     }
   }
 
-  const isStrict = strict || manifest.mode === 'strict';
-  const requiredCheckCount = checks.filter(item =>
-    item && typeof item === 'object' && item.required !== false
-  ).length;
-  if (isStrict && requiredCheckCount === 0) {
-    problems.push('FAIL  strict 模式至少需要配置一项必需检查');
-  }
-  if (isStrict && unverified > 0) {
-    problems.push('FAIL  strict 模式仍有 ' + unverified + ' 项必需检查未验证');
-  }
   for (const problem of problems) console.error(problem);
   if (problems.length > 0) {
     console.error('\n检查未通过：' + problems.length + ' 个失败项，' + unverified + ' 个未验证项。');
     process.exitCode = 1;
   } else {
-    console.log('\nContract 接入结构检查通过。项目行为检查：' +
-      (run ? '已执行已配置命令' : '未执行；使用 --run 才会运行') +
+    console.log('\n未发现已执行检查失败或无效配置。项目行为检查：' +
+      (executed ? '实际执行 ' + executed + ' 项命令' : '未执行项目检查') +
       (unverified ? '；仍有 ' + unverified + ' 项未验证。' : '。'));
   }
 }
@@ -349,9 +321,7 @@ function collectFiles(target) {
 }
 
 function review(target, outputPath) {
-  loadManifest(target);
   const {files, directories, truncated} = collectFiles(target);
-  const basenames = files.map(file => path.posix.basename(file));
   const group = predicate => files.filter(predicate);
   const manifests = group(file => manifestFiles.has(path.posix.basename(file)));
   const apiSchemas = group(file => /(^|\/)(openapi|swagger)([^/]*\.(json|ya?ml))$/i.test(file));
@@ -431,15 +401,9 @@ function review(target, outputPath) {
     '',
     ...(candidateCommands.length ? candidateCommands.map(item => '- ' + item) : ['- 未发现可安全推断的命令；请检查项目实际入口']),
     '',
-    '## Agent 必须继续核实',
+    '## 后续核实',
     '',
-    '- 模块依赖和数据写入是否符合项目 Owner，而不只是目录结构看起来合理。',
-    '- API 是否服务真实消费者，权限、分页、错误语义和响应是否与真实路由一致。',
-    '- 唯一性、事务、重试、部分失败和恢复是否由真实行为保障。',
-    '- 数据、备份、对象和人工修改是否有明确 Owner 与生命周期。',
-    '- 真实请求路径是否存在 N+1、请求扇出、重复解析或无界资源消耗。',
-    '- 发布后真实关键用户路径是否通过；Health、构建和部署成功不能替代。',
-    '- 哪些规范不适用、哪些检查未运行、哪些判断仍缺证据。',
+    '- 按本次目标、Owner 和 DESIGN-REVIEW.md 的适用原则核实真实代码及行为；文件名只是调查线索。',
     '',
     '## 证据边界',
     '',
@@ -465,6 +429,11 @@ function review(target, outputPath) {
 
 function update(target) {
   const manifest = loadManifest(target);
+  manifest.files = manifest.files && typeof manifest.files === 'object' && !Array.isArray(manifest.files) ? manifest.files : {};
+  manifest.schemaVersion = 1;
+  manifest.installedAt ??= new Date().toISOString();
+  manifest.checks ??= [];
+  if (!Array.isArray(manifest.checks)) throw new Error('checks 必须是数组。');
   const docs = path.join(target, docsRelative);
   const updated = [];
   const preserved = [];
@@ -489,11 +458,48 @@ function update(target) {
     }
   }
 
+  const retired = [];
+  for (const name of ['ACCEPTANCE.md', 'OBSERVABILITY.md']) {
+    const destination = path.join(docs, name);
+    const record = manifest.files[name];
+    if (fs.existsSync(destination)) {
+      if (record && sha256(fs.readFileSync(destination)) === record.sha256) {
+        fs.rmSync(destination);
+        retired.push(name);
+      } else {
+        preserved.push(name);
+      }
+    }
+    delete manifest.files[name];
+  }
+  // Delete only the untouched legacy placeholder; retain project-specific facts.
+  const baseline = path.join(docs, 'BASELINE.md');
+  if (fs.existsSync(baseline)) {
+    const content = fs.readFileSync(baseline, 'utf8');
+    const emptyLegacy = ['strict', 'incremental'].some(mode => content === [
+      '# Backend Contract Baseline', '', '接入模式：' + mode, '',
+      '记录已有实现、历史例外、尚未覆盖的检查和暂不适用的规范。',
+      '不要把未运行或缺少证据的检查标记为通过。', '',
+      '## 已有能力与检查', '', '## 历史例外与已知缺口', '', '## 不适用项及理由', '',
+    ].join('\n'));
+    if (emptyLegacy) {
+      fs.rmSync(baseline);
+      retired.push('BASELINE.md');
+    } else {
+      preserved.push('BASELINE.md');
+    }
+  }
+  delete manifest.mode;
+  delete manifest.profile;
+  for (const item of manifest.checks) {
+    if (item && typeof item === 'object') delete item.required;
+  }
   manifest.$schema ??= './docs/backend-contract/manifest.schema.json';
   manifest.contractVersion = version;
   manifest.updatedAt = new Date().toISOString();
   atomicWrite(manifestPath(target), JSON.stringify(manifest, null, 2) + '\n');
   console.log('Contract 更新完成：' + target);
+  console.log('移除已废弃且未修改的规范：' + (retired.join(', ') || '无'));
   console.log('已更新：' + (updated.join(', ') || '无'));
   console.log('补齐缺失：' + (added.join(', ') || '无'));
   console.log('保留本地修改/未登记文件：' + (preserved.join(', ') || '无'));
@@ -520,13 +526,14 @@ function main() {
   if (command === 'create') {
     ensureTarget(target, true);
     copyTree(path.join(root, 'templates', 'generic-service'), target);
-    install(target, {mode: 'strict', profile: 'generic-service'});
+    install(target);
   } else if (command === 'adopt') {
     ensureTarget(target, false);
-    install(target, {mode: 'incremental', profile: 'existing-project'});
+    install(target);
   } else if (command === 'check') {
     ensureTarget(target, false);
-    check(target, {run: flags.has('--run'), strict: flags.has('--strict')});
+    if (flags.has('--strict')) console.log('提示：旧 --strict 已取消，不再强制合规登记。');
+    check(target, {run: flags.has('--run')});
   } else if (command === 'review') {
     ensureTarget(target, false);
     review(target, outArg?.slice('--out='.length));
