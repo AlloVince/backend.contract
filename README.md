@@ -1,4 +1,4 @@
-# Backend Contract v0.3.0
+# Backend Contract v0.4.0
 
 适用于所有项目的后端设计与工程原则，不是框架或合规体系。
 
